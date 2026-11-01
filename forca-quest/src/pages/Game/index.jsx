@@ -437,7 +437,7 @@ export function Game() {
     setTimeout(() => {
       setVisualFeedback(null);
       setActiveReactionGif(null);
-    }, 2500); // Aumentado para 2.5s para dar tempo de ver o GIF
+    }, 3500); // Aumentado para 3.5s para dar tempo de ver o GIF
   };
 
   const getLetterStatus = (letter) => {
