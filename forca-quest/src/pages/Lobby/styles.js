@@ -92,6 +92,52 @@ export const ChatMessages = styled.div`
   gap: 15px;
 `;
 
+export const MessageItem = styled.div`
+  display: flex;
+  gap: 10px;
+  max-width: 85%;
+  align-items: flex-end;
+  /* Se for a sua mensagem, inverte a ordem para o avatar ficar à direita */
+  align-self: ${(props) => (props.$isMine ? "flex-end" : "flex-start")};
+  flex-direction: ${(props) => (props.$isMine ? "row-reverse" : "row")};
+
+  .chat-avatar,
+  .chat-avatar-placeholder {
+    width: 35px;
+    height: 35px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  .chat-avatar {
+    border: 2px solid ${(props) => (props.$isMine ? "#3498db" : "#f1c40f")};
+  }
+
+  .chat-avatar-placeholder {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .msg-content {
+    padding: 10px 15px;
+    border-radius: 12px;
+    line-height: 1.4;
+    background: ${(props) =>
+      props.$isMine ? "#3498db" : "rgba(255, 255, 255, 0.1)"};
+    color: #fff;
+    /* Arredondamento dinâmico do balão de fala */
+    border-bottom-right-radius: ${(props) => (props.$isMine ? "4px" : "12px")};
+    border-bottom-left-radius: ${(props) => (props.$isMine ? "12px" : "4px")};
+
+    strong {
+      display: block;
+      font-size: 0.85rem;
+      margin-bottom: 4px;
+      color: ${(props) => (props.$isMine ? "#e0f7fa" : "#f1c40f")};
+    }
+  }
+`;
+
 export const MessageBubble = styled.div`
   background: ${(props) => (props.$isMine ? "#3498db" : "#2c3e50")};
   align-self: ${(props) => (props.$isMine ? "flex-end" : "flex-start")};

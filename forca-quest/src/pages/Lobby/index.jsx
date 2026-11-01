@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { AuthContext } from "../../contexts/AuthContext";
 import { auth, db } from "../../services/firebase";
 import { signOut } from "firebase/auth";
+import { ProfileModal } from "../../components/ProfileModal";
 import {
   collection,
   addDoc,
@@ -64,6 +65,7 @@ export function Lobby() {
 
   const [topPlayers, setTopPlayers] = useState([]);
   const [loadingRanking, setLoadingRanking] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false); // NOVO ESTADO
 
   useEffect(() => {
     if (urlRoomId && urlRoomId !== "global") {
@@ -112,21 +114,31 @@ export function Lobby() {
   }, [user]);
 
   useEffect(() => {
-    const messagesQuery = query(
-      collection(db, "messages"),
-      where("roomId", "==", currentRoom.id),
-    );
-    const unsubscribeChat = onSnapshot(messagesQuery, (snapshot) => {
+    if (!currentRoom.id) return;
+
+    // Retiramos o orderBy da query para evitar ocultação de mensagens em trânsito
+    const messagesRef = collection(db, `rooms/${currentRoom.id}/messages`);
+
+    const unsubscribeChat = onSnapshot(messagesRef, (snapshot) => {
       const fetchedMessages = [];
       snapshot.forEach((document) =>
         fetchedMessages.push({ id: document.id, ...document.data() }),
       );
-      fetchedMessages.sort(
-        (a, b) =>
-          (a.createdAt?.toMillis() || 0) - (b.createdAt?.toMillis() || 0),
-      );
+
+      // Ordenação feita diretamente pelo React (à prova de falhas)
+      fetchedMessages.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis
+          ? a.createdAt.toMillis()
+          : Date.now();
+        const timeB = b.createdAt?.toMillis
+          ? b.createdAt.toMillis()
+          : Date.now();
+        return timeA - timeB;
+      });
+
       setMessages(fetchedMessages);
     });
+
     return () => unsubscribeChat();
   }, [currentRoom.id]);
 
@@ -334,18 +346,23 @@ export function Lobby() {
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (newMessage.trim() === "") return;
+    // Trava de segurança: só envia se houver texto, usuário logado e sala definida
+    if (!newMessage.trim() || !user || !currentRoom) return;
+
+    const msgText = newMessage;
+    setNewMessage(""); // Limpa o input imediatamente para dar feedback visual
+
     try {
-      await addDoc(collection(db, "messages"), {
-        text: newMessage,
+      const messagesRef = collection(db, `rooms/${currentRoom.id}/messages`);
+      await addDoc(messagesRef, {
+        text: msgText,
         uid: user.uid,
-        username: userProfile?.username || "Desconhecido",
-        roomId: currentRoom.id,
+        username: userProfile?.username || user?.username || "Jogador",
+        avatar: userProfile?.avatar || null, // Garante que envia o avatar escolhido
         createdAt: serverTimestamp(),
       });
-      setNewMessage("");
     } catch (error) {
-      console.error(error);
+      console.error("Erro ao enviar mensagem:", error);
     }
   };
 
@@ -363,9 +380,32 @@ export function Lobby() {
 
   return (
     <LobbyContainer>
+      <ProfileModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        currentAvatar={userProfile?.avatar}
+        onUpdateAvatar={(newId) =>
+          setUserProfile((prev) => ({ ...prev, avatar: newId }))
+        }
+        userProfile={userProfile} // Passa o objeto completo do perfil para o modal
+      />
       <Header>
         <UserInfo>
-          <div className="avatar"></div>
+          <div className="avatar">
+            {/* Verifica se o utilizador tem um avatar, se sim, exibe a imagem. Se não, fica vazio ou com um placeholder */}
+            {userProfile?.avatar && (
+              <img
+                src={`/assets/avatars/${userProfile.avatar}.jpg`}
+                alt="Avatar"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                }}
+              />
+            )}
+          </div>
           <div className="details">
             <h3>{userProfile ? userProfile.username : "Carregando..."}</h3>
             <p>
@@ -376,6 +416,14 @@ export function Lobby() {
           </div>
         </UserInfo>
         <div style={{ display: "flex", gap: "10px" }}>
+          {/* NOVO: Botão que abre o modal de Perfil */}
+          <ActionButton
+            onClick={() => setIsProfileOpen(true)}
+            style={{ backgroundColor: "#9b59b6" }}
+          >
+            👤 Perfil
+          </ActionButton>
+
           <ActionButton
             onClick={() => setModalType("ranking")}
             style={{ backgroundColor: "#f39c12" }}
@@ -494,9 +542,41 @@ export function Lobby() {
                 ? "O chat é público."
                 : "Chat privado."}
             </MessageBubble>
+
             {messages.map((msg) => (
               <MessageBubble key={msg.id} $isMine={msg.uid === user?.uid}>
-                <strong>{msg.username}</strong>
+                {/* NOVO: Exibe o avatar da mensagem ou um placeholder vazio */}
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "10px",
+                    alignItems: "center",
+                    marginBottom: "5px",
+                  }}
+                >
+                  {msg.avatar ? (
+                    <img
+                      src={`/assets/avatars/${msg.avatar}.jpg`}
+                      alt="Avatar"
+                      style={{
+                        width: "25px",
+                        height: "25px",
+                        borderRadius: "50%",
+                        objectFit: "cover",
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: "25px",
+                        height: "25px",
+                        borderRadius: "50%",
+                        background: "rgba(255,255,255,0.2)",
+                      }}
+                    />
+                  )}
+                  <strong>{msg.username}</strong>
+                </div>
                 {msg.text}
               </MessageBubble>
             ))}
@@ -517,24 +597,66 @@ export function Lobby() {
           {currentRoom.id !== "global" && (
             <>
               <h3>👥 Na Sala ({playersInRoom.length + 1})</h3>
+
+              {/* O Seu Card */}
               <PlayerCard
                 $status={userProfile?.status || "available"}
                 style={{ borderLeftColor: "#3498db" }}
               >
-                <div className="info">
-                  <span className="name">{userProfile?.username} (Você)</span>
-                  <span className="points">
-                    Nvl {userProfile?.level} | {userProfile?.points} pts
-                  </span>
+                <div
+                  className="info"
+                  style={{ display: "flex", alignItems: "center", gap: "10px" }}
+                >
+                  {userProfile?.avatar && (
+                    <img
+                      src={`/assets/avatars/${userProfile.avatar}.jpg`}
+                      alt="Avatar"
+                      style={{
+                        width: "35px",
+                        height: "35px",
+                        borderRadius: "50%",
+                        objectFit: "cover",
+                      }}
+                    />
+                  )}
+                  <div style={{ display: "flex", flexDirection: "column" }}>
+                    <span className="name">{userProfile?.username} (Você)</span>
+                    <span className="points">
+                      Nvl {userProfile?.level} | {userProfile?.points} pts
+                    </span>
+                  </div>
                 </div>
               </PlayerCard>
+
+              {/* Cards dos outros jogadores na Sala */}
               {playersInRoom.map((player) => (
                 <PlayerCard key={player.id} $status={player.status}>
-                  <div className="info">
-                    <span className="name">{player.username}</span>
-                    <span className="points">
-                      Nvl {player.level} | {player.points} pts
-                    </span>
+                  <div
+                    className="info"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                    }}
+                  >
+                    {player.avatar && (
+                      <img
+                        src={`/assets/avatars/${player.avatar}.jpg`}
+                        alt="Avatar"
+                        style={{
+                          width: "35px",
+                          height: "35px",
+                          borderRadius: "50%",
+                          objectFit: "cover",
+                        }}
+                      />
+                    )}
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      <span className="name">{player.username}</span>
+                      <span className="points">
+                        Nvl {player.level} | {player.points} pts
+                      </span>
+                    </div>
                   </div>
                 </PlayerCard>
               ))}
@@ -542,18 +664,38 @@ export function Lobby() {
           )}
 
           <h3>🌐 Lobby Global ({playersInGlobal.length})</h3>
+
+          {/* Cards dos jogadores no Lobby Global */}
           {playersInGlobal.map((player) => (
             <PlayerCard key={player.id} $status={player.status}>
-              <div className="info">
-                <span className="name">{player.username}</span>
-                <span className="points">
-                  Nvl {player.level} | {player.points} pts
-                </span>
+              <div
+                className="info"
+                style={{ display: "flex", alignItems: "center", gap: "10px" }}
+              >
+                {player.avatar && (
+                  <img
+                    src={`/assets/avatars/${player.avatar}.jpg`}
+                    alt="Avatar"
+                    style={{
+                      width: "35px",
+                      height: "35px",
+                      borderRadius: "50%",
+                      objectFit: "cover",
+                    }}
+                  />
+                )}
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <span className="name">{player.username}</span>
+                  <span className="points">
+                    Nvl {player.level} | {player.points} pts
+                  </span>
+                </div>
               </div>
+
               {player.status === "available" && currentRoom.id !== "global" && (
                 <button
                   onClick={() => handleInvitePlayer(player.id)}
-                  style={{ background: "#3498db" }}
+                  style={{ background: "#3498db", marginLeft: "auto" }}
                 >
                   Convidar
                 </button>
@@ -590,6 +732,30 @@ export function Lobby() {
                                 ? "🥉"
                                 : `${position}º`}
                         </span>
+
+                        {/* NOVO: Avatar do jogador no Ranking */}
+                        {player.avatar ? (
+                          <img
+                            src={`/assets/avatars/${player.avatar}.jpg`}
+                            alt="Avatar"
+                            style={{
+                              width: "35px",
+                              height: "35px",
+                              borderRadius: "50%",
+                              objectFit: "cover",
+                            }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              width: "35px",
+                              height: "35px",
+                              borderRadius: "50%",
+                              background: "rgba(255,255,255,0.1)",
+                            }}
+                          />
+                        )}
+
                         <span className="name">{player.username}</span>
                       </div>
                       <div className="stats">
