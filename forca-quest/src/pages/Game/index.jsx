@@ -445,7 +445,7 @@ export function Game() {
         setTimeout(() => {
           setVisualFeedback(null);
           setActiveReactionGif(null);
-        }, 2000); // 2 segundos é o tempo ideal para um GIF de reação rápida
+        }, 3500); // 3.5 segundos é o tempo ideal para um GIF de reação rápida
       }
     }, 10);
   };
