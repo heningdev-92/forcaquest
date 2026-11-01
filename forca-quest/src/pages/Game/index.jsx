@@ -12,6 +12,7 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 import { APP_DATA } from "../../data/data";
+import { AudioContext } from "../../contexts/AudioContext"; // Adicione
 import {
   GameContainer,
   ActionArea,
@@ -22,10 +23,17 @@ import {
   KeyButton,
   ScreenReaderText,
   HangmanVisual,
+  ScreenFeedback,
+  GameAreaWrapper,
+  ResultBanner,
+  MiddleSection,
+  ReactionGifContainer,
 } from "./styles";
 
 export function Game() {
   const navigate = useNavigate();
+  const { playSfx } = useContext(AudioContext); // Adicione o hook de áudio
+  const [visualFeedback, setVisualFeedback] = useState(null); // 'hit' ou 'miss'
   const [searchParams] = useSearchParams();
   const { user } = useContext(AuthContext);
 
@@ -64,7 +72,6 @@ export function Game() {
       let finalWord = null;
       let finalDiff = actualDiff;
 
-      // No modo desafio, usamos a palavra e as config rigorosamente do Banco de Dados
       if (gameMode === "challenge" && challengeId) {
         const challengeRef = doc(db, "challenges", challengeId);
         for (let i = 0; i < 5; i++) {
@@ -94,12 +101,28 @@ export function Game() {
         }
         const wordsList = snapshot.docs.map((doc) => doc.data());
         let filteredWords = wordsList;
+
+        // Filtro por Tema
         if (actualTheme && actualTheme !== "Aleatório") {
           filteredWords = wordsList.filter(
             (word) => word.theme === actualTheme,
           );
         }
-        if (filteredWords.length === 0) filteredWords = wordsList;
+
+        // NOVO: Filtro rigoroso por Categoria (STANDARD ou HARD)
+        const targetCategory = actualDiff === "HARD" ? "HARD" : "STANDARD";
+        filteredWords = filteredWords.filter(
+          (word) => (word.category || "STANDARD") === targetCategory,
+        );
+
+        if (filteredWords.length === 0) {
+          // Se não houver palavras na categoria selecionada, recua para a lista base do tema para evitar crash
+          filteredWords = wordsList.filter(
+            (word) => word.theme === actualTheme,
+          );
+          if (filteredWords.length === 0) filteredWords = wordsList;
+        }
+
         finalWord =
           filteredWords[Math.floor(Math.random() * filteredWords.length)];
       }
@@ -118,6 +141,33 @@ export function Game() {
       setLoading(false);
     }
   };
+
+  // O Vite lê a pasta e conta os arquivos automaticamente
+  const hitsGifs = import.meta.glob("../../assets/gifs/hits/*.gif");
+  const missGifs = import.meta.glob("../../assets/gifs/miss/*.gif");
+  const wonsGifs = import.meta.glob("../../assets/gifs/wons/*.gif");
+  const lostsGifs = import.meta.glob("../../assets/gifs/losts/*.gif");
+
+  const GIF_CONFIG = {
+    hits: Object.keys(hitsGifs).length,
+    miss: Object.keys(missGifs).length,
+    wons: Object.keys(wonsGifs).length,
+    losts: Object.keys(lostsGifs).length,
+  };
+
+  const [activeReactionGif, setActiveReactionGif] = useState(null);
+  const [endGameGif, setEndGameGif] = useState(null);
+
+  // Sorteia o GIF final assim que o status do jogo mudar para won ou lost
+  useEffect(() => {
+    if (gameStatus === "won") {
+      const randomId = Math.floor(Math.random() * GIF_CONFIG.wons) + 1;
+      setEndGameGif(`/assets/gifs/wons/${randomId}.gif`);
+    } else if (gameStatus === "lost") {
+      const randomId = Math.floor(Math.random() * GIF_CONFIG.losts) + 1;
+      setEndGameGif(`/assets/gifs/losts/${randomId}.gif`);
+    }
+  }, [gameStatus]);
 
   useEffect(() => {
     fetchRandomWord();
@@ -300,6 +350,7 @@ export function Game() {
             }
             setGameStatus("waiting");
             setAnnouncement("Verificando chegada...");
+            playSfx("win"); // <-- Toca som de vitória
           } else if (actualCMode === "PRECISION") {
             await updateDoc(challengeRef, {
               [`progress.${user.uid}`]: { mistakes, time: Date.now() },
@@ -319,6 +370,7 @@ export function Game() {
         setGameStatus("won");
         setAnnouncement("Parabéns! Você adivinhou a palavra.");
         processWinReward();
+        playSfx("win"); // <-- Toca som de vitória
       }
     } else if (mistakes >= maxMistakes) {
       if (gameMode === "challenge") {
@@ -330,6 +382,7 @@ export function Game() {
             });
             setGameStatus("waiting");
             setAnnouncement("Enforcado! Aguardando apuração...");
+            playSfx("lose"); // <-- Toca som de derrota
           } else if (actualCMode === "SURVIVAL") {
             await updateDoc(challengeRef, {
               [`progress.${user.uid}`]: { status: "dead" },
@@ -345,6 +398,7 @@ export function Game() {
       } else {
         setGameStatus("lost");
         setAnnouncement(`Fim de jogo. A palavra era ${wordData.word}.`);
+        playSfx("lose"); // <-- Toca som de derrota
       }
     }
   }, [guessedLetters, mistakes, wordData, gameStatus]);
@@ -356,8 +410,34 @@ export function Game() {
       !wordData
     )
       return;
+
     setGuessedLetters([...guessedLetters, letter]);
-    if (!wordData.word.includes(letter)) setMistakes((prev) => prev + 1);
+
+    if (!wordData.word.includes(letter)) {
+      setMistakes((prev) => prev + 1);
+      playSfx("miss");
+      triggerFeedback("miss");
+    } else {
+      playSfx("hit");
+      triggerFeedback("hit");
+    }
+  };
+
+  const triggerFeedback = (type) => {
+    // Define qual pasta procurar com base no tipo
+    const folder = type === "hit" ? "hits" : "miss";
+    const maxGifs = GIF_CONFIG[folder];
+
+    // Sorteia o número
+    const randomId = Math.floor(Math.random() * maxGifs) + 1;
+
+    setActiveReactionGif(`/assets/gifs/${folder}/${randomId}.gif`);
+    setVisualFeedback(type);
+
+    setTimeout(() => {
+      setVisualFeedback(null);
+      setActiveReactionGif(null);
+    }, 2500); // Aumentado para 2.5s para dar tempo de ver o GIF
   };
 
   const getLetterStatus = (letter) => {
@@ -386,133 +466,147 @@ export function Game() {
     <GameContainer>
       <ScreenReaderText aria-live="polite">{announcement}</ScreenReaderText>
 
-      {/* ÁREA EXCLUSIVA PARA AÇÕES DE NAVEGAÇÃO */}
-      <ActionArea>
-        <button
-          onClick={() => navigate("/lobby?room=global")}
-          style={{ backgroundColor: "#e74c3c" }}
-        >
-          Sair para o Lobby
-        </button>
+      {/* Feedback de Ecrã Inteiro */}
+      {visualFeedback && <ScreenFeedback $type={visualFeedback} />}
 
-        {roomId !== "global" &&
-          (gameStatus === "won" || gameStatus === "lost") && (
+      {/* Banner de Resultado Final com GIF Sorteado */}
+      {(gameStatus === "won" || gameStatus === "lost") && (
+        <ResultBanner $won={gameStatus === "won"}>
+          {endGameGif && <img src={endGameGif} alt={gameStatus} />}
+          <span>{gameStatus === "won" ? "Vitória! 🎉" : "Enforcado! 💀"}</span>
+        </ResultBanner>
+      )}
+
+      {/* Envolva os componentes visuais para o efeito Shake */}
+      <GameAreaWrapper $shake={visualFeedback === "miss"}>
+        <ActionArea>
+          <button
+            onClick={() => navigate("/lobby?room=global")}
+            style={{ backgroundColor: "#e74c3c" }}
+          >
+            Sair para o Lobby
+          </button>
+          {roomId !== "global" &&
+            (gameStatus === "won" || gameStatus === "lost") && (
+              <button
+                onClick={() => navigate(`/lobby?room=${roomId}`)}
+                style={{ backgroundColor: "#9b59b6" }}
+              >
+                Voltar para a Sala
+              </button>
+            )}
+          {gameMode === "solo" && (
             <button
-              onClick={() => navigate(`/lobby?room=${roomId}`)}
-              style={{ backgroundColor: "#9b59b6" }}
+              onClick={() => navigate(`/setup?mode=${gameMode}&room=${roomId}`)}
+              style={{ backgroundColor: "#95a5a6" }}
             >
-              Voltar para a Sala
+              Voltar ao Setup
             </button>
           )}
+        </ActionArea>
 
-        {gameMode === "solo" && (
-          <button
-            onClick={() => navigate(`/setup?mode=${gameMode}&room=${roomId}`)}
-            style={{ backgroundColor: "#95a5a6" }}
-          >
-            Voltar ao Setup
-          </button>
-        )}
-      </ActionArea>
-
-      {/* ÁREA EXCLUSIVA PARA STATUS E INFORMAÇÕES */}
-      <InfoArea $danger={mistakes >= 4}>
-        <div className="stats-row">
-          <div className="stat-item">
-            Tema: <strong>{actualTheme}</strong>
-          </div>
-
-          {gameMode === "challenge" && (
-            <div
-              className="stat-item"
-              style={{ color: "#f1c40f", fontWeight: "bold" }}
-            >
-              🏆 {APP_DATA.challengeModes[actualCMode]?.label} (
-              {challengeData?.pot || 0} pts)
+        <InfoArea $danger={mistakes >= 4}>
+          <div className="stats-row">
+            <div className="stat-item">
+              Tema: <strong>{actualTheme}</strong>
             </div>
-          )}
-
-          <div className="stat-item lives">
-            Erros: {mistakes} / {maxMistakes}
-          </div>
-        </div>
-
-        <div className="hint-row">
-          {gameStatus === "won" && (
-            <span style={{ color: "#2ecc71" }}>{announcement}</span>
-          )}
-          {gameStatus === "lost" && (
-            <span style={{ color: "#e74c3c" }}>{announcement}</span>
-          )}
-          {gameStatus === "waiting" && (
-            <span style={{ color: "#f39c12" }}>{announcement}</span>
-          )}
-          {gameStatus === "playing" && getHintDisplay()}
-        </div>
-      </InfoArea>
-
-      <HangmanVisual aria-hidden="true">
-        <svg viewBox="0 0 300 300">
-          <g stroke="#d35400" strokeWidth="10">
-            <line x1="50" y1="280" x2="150" y2="280" />
-            <line x1="100" y1="280" x2="100" y2="20" />
-            <line x1="95" y1="20" x2="220" y2="20" />
-            <line
-              x1="220"
-              y1="20"
-              x2="220"
-              y2="50"
-              strokeWidth="6"
-              stroke="#95a5a6"
-            />
-          </g>
-
-          <g stroke={isDead ? "#e74c3c" : "#f1c40f"} strokeWidth="8">
-            {mistakes >= 1 && <circle cx="220" cy="80" r="30" />}
-            {mistakes >= 2 && <line x1="220" y1="110" x2="220" y2="180" />}
-            {mistakes >= 3 && <line x1="220" y1="130" x2="180" y2="170" />}
-            {mistakes >= 4 && <line x1="220" y1="130" x2="260" y2="170" />}
-            {mistakes >= 5 && <line x1="220" y1="180" x2="190" y2="240" />}
-            {mistakes >= 6 && <line x1="220" y1="180" x2="250" y2="240" />}
-
-            {isDead && (
-              <g stroke="#e74c3c" strokeWidth="4">
-                <line x1="205" y1="70" x2="215" y2="80" />
-                <line x1="215" y1="70" x2="205" y2="80" />
-                <line x1="225" y1="70" x2="235" y2="80" />
-                <line x1="235" y1="70" x2="225" y2="80" />
-              </g>
+            {gameMode === "challenge" && (
+              <div
+                className="stat-item"
+                style={{ color: "#f1c40f", fontWeight: "bold" }}
+              >
+                🏆 {APP_DATA.challengeModes[actualCMode]?.label} (
+                {challengeData?.pot || 0} pts)
+              </div>
             )}
-          </g>
-        </svg>
-      </HangmanVisual>
+            <div className="stat-item lives">
+              Erros: {mistakes} / {maxMistakes}
+            </div>
+          </div>
+          <div className="hint-row">
+            {gameStatus === "won" && (
+              <span style={{ color: "#2ecc71" }}>{announcement}</span>
+            )}
+            {gameStatus === "lost" && (
+              <span style={{ color: "#e74c3c" }}>{announcement}</span>
+            )}
+            {gameStatus === "waiting" && (
+              <span style={{ color: "#f39c12" }}>{announcement}</span>
+            )}
+            {gameStatus === "playing" && getHintDisplay()}
+          </div>
+        </InfoArea>
 
-      <WordArea aria-label="Palavra oculta">
-        {wordData.word.split("").map((letter, index) => {
-          const isRevealed =
-            guessedLetters.includes(letter) || gameStatus === "lost";
-          return (
-            <LetterBox key={index} $revealed={isRevealed}>
-              {isRevealed ? letter : ""}
-            </LetterBox>
-          );
-        })}
-      </WordArea>
+        {/* NOVA SEÇÃO CENTRAL: Forca e GIF Lado a Lado */}
+        <MiddleSection>
+          <HangmanVisual aria-hidden="true">
+            <svg viewBox="0 0 300 300">
+              <g stroke="#d35400" strokeWidth="10">
+                <line x1="50" y1="280" x2="150" y2="280" />
+                <line x1="100" y1="280" x2="100" y2="20" />
+                <line x1="95" y1="20" x2="220" y2="20" />
+                <line
+                  x1="220"
+                  y1="20"
+                  x2="220"
+                  y2="50"
+                  strokeWidth="6"
+                  stroke="#95a5a6"
+                />
+              </g>
+              <g stroke={isDead ? "#e74c3c" : "#f1c40f"} strokeWidth="8">
+                {mistakes >= 1 && <circle cx="220" cy="80" r="30" />}
+                {mistakes >= 2 && <line x1="220" y1="110" x2="220" y2="180" />}
+                {mistakes >= 3 && <line x1="220" y1="130" x2="180" y2="170" />}
+                {mistakes >= 4 && <line x1="220" y1="130" x2="260" y2="170" />}
+                {mistakes >= 5 && <line x1="220" y1="180" x2="190" y2="240" />}
+                {mistakes >= 6 && <line x1="220" y1="180" x2="250" y2="240" />}
+                {isDead && (
+                  <g stroke="#e74c3c" strokeWidth="4">
+                    <line x1="205" y1="70" x2="215" y2="80" />
+                    <line x1="215" y1="70" x2="205" y2="80" />
+                    <line x1="225" y1="70" x2="235" y2="80" />
+                    <line x1="235" y1="70" x2="225" y2="80" />
+                  </g>
+                )}
+              </g>
+            </svg>
+          </HangmanVisual>
 
-      <Keyboard aria-label="Teclado Virtual">
-        {alphabet.map((letter) => (
-          <KeyButton
-            key={letter}
-            onClick={() => handleGuess(letter)}
-            disabled={
-              guessedLetters.includes(letter) || gameStatus !== "playing"
-            }
-            $status={getLetterStatus(letter)}
-          >
-            {letter}
-          </KeyButton>
-        ))}
-      </Keyboard>
+          <ReactionGifContainer>
+            {visualFeedback && activeReactionGif && (
+              <img src={activeReactionGif} alt={visualFeedback} />
+            )}
+          </ReactionGifContainer>
+        </MiddleSection>
+
+        <WordArea aria-label="Palavra oculta">
+          {wordData.word.split("").map((letter, index) => {
+            const isRevealed =
+              guessedLetters.includes(letter) || gameStatus === "lost";
+            return (
+              <LetterBox key={index} $revealed={isRevealed}>
+                {isRevealed ? letter : ""}
+              </LetterBox>
+            );
+          })}
+        </WordArea>
+
+        <Keyboard aria-label="Teclado Virtual">
+          {alphabet.map((letter) => (
+            <KeyButton
+              key={letter}
+              onClick={() => handleGuess(letter)}
+              disabled={
+                guessedLetters.includes(letter) || gameStatus !== "playing"
+              }
+              $status={getLetterStatus(letter)}
+            >
+              {letter}
+            </KeyButton>
+          ))}
+        </Keyboard>
+      </GameAreaWrapper>
 
       {gameStatus !== "playing" &&
         gameStatus !== "waiting" &&

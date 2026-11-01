@@ -1,10 +1,19 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useContext } from "react";
+
+// Contextos
 import { AuthProvider } from "./contexts/AuthContext";
 import { ThemeProvider, ThemeContext } from "./contexts/ThemeContext";
-import { useContext } from "react";
-import { PrivateRoute } from "./routes/PrivateRoute";
-import { GlobalStyle } from "./styles/GlobalStyle";
+import { AudioProvider } from "./contexts/AudioContext";
 
+// Estilos e Rotas
+import { GlobalStyle } from "./styles/GlobalStyle";
+import { PrivateRoute } from "./routes/PrivateRoute";
+
+// Componentes Globais
+import { AudioToggle } from "./components/AudioToggle";
+
+// Páginas
 import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
 import { Lobby } from "./pages/Lobby";
@@ -28,50 +37,55 @@ function App() {
     <AuthProvider>
       <ThemeProvider>
         <ThemeWrapper>
-          <BrowserRouter>
-            <Routes>
-              {/* Rotas Públicas */}
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
+          {/* O AudioProvider DEVE abraçar o AudioToggle e as Rotas */}
+          <AudioProvider>
+            <AudioToggle />
 
-              {/* Rotas Privadas */}
-              <Route
-                path="/lobby"
-                element={
-                  <PrivateRoute>
-                    <Lobby />
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/setup"
-                element={
-                  <PrivateRoute>
-                    <SetupGame />
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/game"
-                element={
-                  <PrivateRoute>
-                    <Game />
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/admin"
-                element={
-                  <PrivateRoute>
-                    <Admin />
-                  </PrivateRoute>
-                }
-              />
+            <BrowserRouter>
+              <Routes>
+                {/* Rotas Públicas */}
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
 
-              {/* Redirecionamento padrão */}
-              <Route path="*" element={<Navigate to="/lobby" />} />
-            </Routes>
-          </BrowserRouter>
+                {/* Rotas Privadas */}
+                <Route
+                  path="/lobby"
+                  element={
+                    <PrivateRoute>
+                      <Lobby />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/setup"
+                  element={
+                    <PrivateRoute>
+                      <SetupGame />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/game"
+                  element={
+                    <PrivateRoute>
+                      <Game />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/admin"
+                  element={
+                    <PrivateRoute>
+                      <Admin />
+                    </PrivateRoute>
+                  }
+                />
+
+                {/* Redirecionamento padrão */}
+                <Route path="*" element={<Navigate to="/lobby" />} />
+              </Routes>
+            </BrowserRouter>
+          </AudioProvider>
         </ThemeWrapper>
       </ThemeProvider>
     </AuthProvider>

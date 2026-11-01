@@ -1,14 +1,103 @@
 import styled from "styled-components";
 
+import { keyframes } from "styled-components"; // Atualize o import do styled-components no topo se necessário
+
+const flashGreen = keyframes`
+  0% { box-shadow: inset 0 0 0px rgba(46, 204, 113, 0); }
+  50% { box-shadow: inset 0 0 150px rgba(46, 204, 113, 0.5); }
+  100% { box-shadow: inset 0 0 0px rgba(46, 204, 113, 0); }
+`;
+
+const flashRed = keyframes`
+  0% { box-shadow: inset 0 0 0px rgba(231, 76, 60, 0); }
+  50% { box-shadow: inset 0 0 150px rgba(231, 76, 60, 0.5); }
+  100% { box-shadow: inset 0 0 0px rgba(231, 76, 60, 0); }
+`;
+
+const shake = keyframes`
+  0% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  50% { transform: translateX(5px); }
+  75% { transform: translateX(-5px); }
+  100% { transform: translateX(0); }
+`;
+
+export const ScreenFeedback = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 1000;
+  animation: ${(props) =>
+      props.$type === "hit"
+        ? flashGreen
+        : props.$type === "miss"
+          ? flashRed
+          : "none"}
+    0.4s ease-out;
+`;
+
+export const GameAreaWrapper = styled.div`
+  width: 100%;
+  animation: ${(props) => (props.$shake ? shake : "none")} 0.3s ease-in-out;
+`;
+
+export const ResultBanner = styled.div`
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: ${(props) =>
+    props.$won ? "rgba(46, 204, 113, 0.95)" : "rgba(231, 76, 60, 0.95)"};
+  color: white;
+  padding: 30px 50px;
+  border-radius: 12px;
+  font-size: 2rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+  z-index: 2000;
+  animation: fadeInScale 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  text-align: center;
+  border: 4px solid white;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+
+  img {
+    width: 180px;
+    border-radius: 8px;
+  }
+
+  @keyframes fadeInScale {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.5);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+  }
+`;
+
 export const GameContainer = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
   max-width: 800px;
   margin: 0 auto;
-  padding: 20px;
-  height: 100vh;
-  gap: 30px;
+  min-height: 100vh;
+  padding: 40px 20px;
+
+  /* NOVO: Vidro fumado que escurece o fundo e melhora a legibilidade */
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.8);
 `;
 
 export const ActionArea = styled.div`
@@ -168,5 +257,50 @@ export const HangmanVisual = styled.div`
     stroke-linecap: square;
     stroke-linejoin: miter;
     filter: drop-shadow(2px 4px 6px rgba(0, 0, 0, 0.5));
+  }
+`;
+
+export const MiddleSection = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr; /* Duas colunas rigorosamente iguais */
+  align-items: center;
+  justify-items: center;
+  width: 100%;
+  max-width: 550px; /* Mantém os dois próximos e alinhados */
+  margin: 20px auto; /* Centraliza a caixa inteira na tela */
+  min-height: 220px;
+
+  /* Em celulares, eles empilham para não quebrar a tela */
+  @media (max-width: 600px) {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+`;
+
+export const ReactionGifContainer = styled.div`
+  width: 200px;
+  height: 200px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  img {
+    width: 200px;
+    height: auto;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+    border: 3px solid rgba(255, 255, 255, 0.2);
+    animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  @keyframes popIn {
+    0% {
+      transform: scale(0.5);
+      opacity: 0;
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
   }
 `;
