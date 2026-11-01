@@ -396,9 +396,11 @@ export function Game() {
         };
         handleChallengeLoss();
       } else {
-        setGameStatus("lost");
-        setAnnouncement(`Fim de jogo. A palavra era ${wordData.word}.`);
-        playSfx("lose"); // <-- Toca som de derrota
+        setTimeout(() => {
+          setGameStatus("lost");
+          setAnnouncement(`Fim de jogo. A palavra era ${wordData.word}.`);
+          playSfx("lose");
+        }, 1500);
       }
     }
   }, [guessedLetters, mistakes, wordData, gameStatus]);
@@ -424,20 +426,28 @@ export function Game() {
   };
 
   const triggerFeedback = (type) => {
-    // Define qual pasta procurar com base no tipo
-    const folder = type === "hit" ? "hits" : "miss";
-    const maxGifs = GIF_CONFIG[folder];
+    // 1. Força a limpeza imediata para garantir que a animação recomeça
+    setVisualFeedback(null);
+    setActiveReactionGif(null);
 
-    // Sorteia o número
-    const randomId = Math.floor(Math.random() * maxGifs) + 1;
-
-    setActiveReactionGif(`/assets/gifs/${folder}/${randomId}.gif`);
-    setVisualFeedback(type);
-
+    // 2. Aguarda um milissegundo para o React registar o ecrã limpo e dispara o novo
     setTimeout(() => {
-      setVisualFeedback(null);
-      setActiveReactionGif(null);
-    }, 3500); // Aumentado para 3.5s para dar tempo de ver o GIF
+      const folder = type === "hit" ? "hits" : "miss";
+      const maxGifs = GIF_CONFIG[folder];
+      const randomId = Math.floor(Math.random() * maxGifs) + 1;
+
+      setActiveReactionGif(`/assets/gifs/${folder}/${randomId}.gif`);
+      setVisualFeedback(type);
+
+      // Define um tempo dinâmico: se errar (miss) e for o último erro, não limpa
+      // (deixa o GIF de Game Over cobrir naturalmente depois)
+      if (!(type === "miss" && mistakes + 1 >= maxMistakes)) {
+        setTimeout(() => {
+          setVisualFeedback(null);
+          setActiveReactionGif(null);
+        }, 2000); // 2 segundos é o tempo ideal para um GIF de reação rápida
+      }
+    }, 10);
   };
 
   const getLetterStatus = (letter) => {
